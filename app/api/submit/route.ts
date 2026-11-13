@@ -37,8 +37,12 @@ export async function POST(request: Request) {
     }
 
     const trackID = trackParts[1] ?? ''
-    if (trackParts[0] !== 'track' || !/^[a-zA-Z0-9]{22}$/.test(trackID)) {
+    if (trackParts[0] !== 'track' && trackParts[0] !== 's') {
         return Response.json({ message: 'Paste a link to a single track' }, { status: 400 })
+    }
+
+    if (!/^[a-zA-Z0-9]{22}$/.test(trackID)) {
+        return Response.json({ message: 'Track ID is invalid' }, { status: 400 })
     }
 
     console.log( trackID, trinketID )
