@@ -1,10 +1,16 @@
-export default async function Page({
+import { Suspense } from 'react'
+import { TrinketDetails } from './trinket-details'
+
+export default function Page({
     params,
 }: {
     params: Promise<{ trinket: string }>
 }) {
-    const { trinket } = await params
     return (
-        <div>{trinket}</div>
+        <main>
+            <Suspense fallback={<p>Loading...</p>}>
+                <TrinketDetails params={params} />
+            </Suspense>
+        </main>
     );
 }
