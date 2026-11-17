@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase'
+
 export async function POST(request: Request) {
     let body
     
@@ -11,13 +13,13 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Invalid request' }, { status: 400 })
     }
     
-    const { link, trinketID } = body
-    if (typeof link !== 'string' || typeof trinketID !== 'string') {
-        return Response.json({ message: 'Missing link or trinket ID' }, { status: 400 })
+    const { link, trinketID, submissionKey } = body
+    if (typeof link !== 'string' || typeof trinketID !== 'string' || typeof submissionKey !== 'string') {
+        return Response.json({ message: 'Missing link, trinket ID, or key' }, { status: 400 })
     }
 
-    if (link.length >= 200 || trinketID.length >= 64) {
-        return Response.json({ message: 'Input too long' }, { status: 400 })
+    if (link.length >= 200 || !/^[a-z0-9]{8}$/.test(trinketID) || !/^[A-Za-z0-9-]{8,64}$/.test(submissionKey)) {
+        return Response.json({ message: 'Invalid request' }, { status: 400 })
     }
 
     let url
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Invalid link' }, { status: 400 })
     }
 
-    if (url.protocol != 'https:' || url.hostname != 'open.spotify.com') {
+    if (url.protocol !== 'https:' || url.hostname !== 'open.spotify.com') {
         return Response.json({ message: 'Not a Spotify link' }, { status: 400 })
     }
 
@@ -45,7 +47,52 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Track ID is invalid' }, { status: 400 })
     }
 
-    console.log( trackID, trinketID )
+    const { data: trinket, error: trinketError } = await supabase
+        .from('trinkets')
+        .select('active')
+        .eq('id', trinketID)
+        .maybeSingle()
 
-    return Response.json({ message: 'ok' })
+    if (trinketError) {
+        console.error(trinketError)
+        return Response.json({ message: 'Something went wrong' }, { status: 503 })
+    }
+    
+    if (!trinket || !trinket.active) {
+        return Response.json({ message: 'Unknown trinket' }, { status: 404 })
+    }
+    
+    const { data: playlist, error: playlistError } = await supabase
+        .from('playlists')
+        .select('id')
+        .eq('active', true)
+        .maybeSingle()
+
+    if (playlistError || !playlist) {
+        console.error(playlistError)
+        return Response.json({ message: 'Not accepting songs right now' }, { status: 503 })
+    }
+
+    const { error: insertError } = await supabase.from('submissions').insert({
+        trinket_id: trinketID,
+        playlist_id: playlist.id,
+        provider: 'spotify',
+        track_id: trackID,
+        submission_key: submissionKey
+    })
+
+    if (insertError) {
+        if (insertError.code === '23505') {
+            if (insertError.message.includes('no_duplicate_songs')) {
+                return Response.json({ message: 'The song is already in the playlist' }, { status: 409 })
+            }
+            return Response.json({ message: 'Song received' })
+        }
+        if (insertError.code === '23503') {
+            return Response.json({ message: 'Unknown trinket' }, { status: 404 })
+        }
+        console.error(insertError)
+        return Response.json({ message: 'Something went wrong' }, { status: 500 })
+    }
+    return Response.json({ message: 'Song received' })
 }
