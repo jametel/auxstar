@@ -19,7 +19,6 @@ export function SubmitForm({ trinketID, eventNames }: { trinketID: string; event
         event.preventDefault()
         const form = event.currentTarget
         const link = new FormData(form).get('link')
-        console.log(link)
 
         const eventValue = new FormData(form).get('event')
 
