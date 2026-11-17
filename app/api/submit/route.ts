@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { findOrCreateEvent } from '@/lib/events'
 
 export async function POST(request: Request) {
     let body
@@ -13,11 +14,25 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Invalid request' }, { status: 400 })
     }
     
-    const { link, trinketID, submissionKey } = body
+    const { link, trinketID, submissionKey, event: eventInput } = body
     if (typeof link !== 'string' || typeof trinketID !== 'string' || typeof submissionKey !== 'string') {
         return Response.json({ message: 'Missing link, trinket ID, or key' }, { status: 400 })
     }
 
+    let eventName: string | null = null
+    if (eventInput !== undefined && eventInput !== null) {
+        if (typeof eventInput !== 'string') {
+            return Response.json({ message: 'Invalid event name' }, { status: 400 })
+        }
+        const cleaned = eventInput.trim().replace(/\s+/g, ' ')
+        if (cleaned.length > 0) {
+            if (cleaned.length < 2 || cleaned.length > 60) {
+                return Response.json({ message: 'Event name must be between 2 and 60 characters' }, { status: 400 })
+            }
+            eventName = cleaned
+        }
+    }
+    
     if (link.length >= 200 || !/^[a-z0-9]{8}$/.test(trinketID) || !/^[A-Za-z0-9-]{8,64}$/.test(submissionKey)) {
         return Response.json({ message: 'Invalid request' }, { status: 400 })
     }
@@ -73,12 +88,15 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Not accepting songs right now' }, { status: 503 })
     }
 
+    const eventID = eventName ? await findOrCreateEvent(eventName) : null
+
     const { error: insertError } = await supabase.from('submissions').insert({
         trinket_id: trinketID,
         playlist_id: playlist.id,
         provider: 'spotify',
         track_id: trackID,
-        submission_key: submissionKey
+        submission_key: submissionKey,
+        event_id: eventID
     })
 
     if (insertError) {
