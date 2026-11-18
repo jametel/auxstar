@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { findOrCreateEvent } from '@/lib/events'
+import { getTrackInfo } from '@/lib/spotify'
+import { deliver } from '@/lib/deliver'
 
 export async function POST(request: Request) {
     let body
@@ -79,7 +81,7 @@ export async function POST(request: Request) {
     
     const { data: playlist, error: playlistError } = await supabase
         .from('playlists')
-        .select('id')
+        .select('id, external_id')
         .eq('active', true)
         .maybeSingle()
 
@@ -88,16 +90,26 @@ export async function POST(request: Request) {
         return Response.json({ message: 'Not accepting songs right now' }, { status: 503 })
     }
 
+    const track = await getTrackInfo(trackID)
+    if (track.status === 'not_found') {
+        return Response.json({ message: 'Couldn\'t find track on Spotify' }, { status: 404 })
+    }
+    if (track.status === 'failed') {
+        return Response.json({ message: 'Something went wrong. Please try again.' }, { status: 503 })
+    }
+    
     const eventID = eventName ? await findOrCreateEvent(eventName) : null
 
-    const { error: insertError } = await supabase.from('submissions').insert({
+    const { data: row, error: insertError } = await supabase.from('submissions').insert({
         trinket_id: trinketID,
         playlist_id: playlist.id,
         provider: 'spotify',
         track_id: trackID,
         submission_key: submissionKey,
-        event_id: eventID
-    })
+        event_id: eventID,
+        title: track.name.slice(0, 200),
+        artist: track.artist.slice(0, 200)
+    }).select('id').single()
 
     if (insertError) {
         if (insertError.code === '23505') {
@@ -112,5 +124,6 @@ export async function POST(request: Request) {
         console.error(insertError)
         return Response.json({ message: 'Something went wrong' }, { status: 500 })
     }
-    return Response.json({ message: 'Song received' })
+    const outcome = await deliver(row.id, playlist.external_id, trackID)
+    return Response.json({ message: outcome === 'added' ? 'Song added' : 'Song received. It will appear in the playlist shortly.' })
 }

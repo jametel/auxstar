@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
-  partialPrefetching: true,
+  allowedDevOrigins: ['192.168.0.101', '127.0.0.1'],
+  partialPrefetching: false,
   turbopack: {
     rules: {
       "*.css": {
