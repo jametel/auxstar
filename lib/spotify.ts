@@ -102,6 +102,7 @@ export type AddResult =
     | { status: 'auth_failed' }
     | { status: 'not_found' }
     | { status: 'failed' }
+    |  { status: 'rejected' }
 
 export async function addTrackToPlaylist(playlistID: string, trackID: string) : Promise<AddResult> {
     const token = await getSpotifyAccessToken()
@@ -131,11 +132,16 @@ export async function addTrackToPlaylist(playlistID: string, trackID: string) : 
 
     if (response.status === 401 || response.status === 403) {
         console.error('Spotify rejected the login with status', response.status)
-                console.error('Spotify said:', await response.text())
+        console.error('Spotify said:', await response.text())
         return { status: 'auth_failed' }
     }
 
     if (response.status === 404) { return { status: 'not_found' } }
+
+    if (response.status >= 400 && response.status < 500) {
+        console.error('Spotify add track failed with status', response.status)
+        return { status: 'rejected' }
+    }
 
     console.error('Spotify add track failed with status', response.status)
     return { status: 'failed' }
